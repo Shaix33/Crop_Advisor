@@ -1,4 +1,13 @@
 from rest_framework import viewsets, status
+from rest_framework import generics, permissions
+from django.core.mail import send_mail
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.conf import settings
+from django.urls import reverse
+from django.contrib.auth.models import User
+from serializers import UserRegistrationSerializer
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
@@ -29,7 +38,30 @@ class LocationViewSet(viewsets.ModelViewSet):
         # Tie the location to the logged-in user
         serializer.save(user=self.request.user)
 
+class userRegistrationView(generics.CreateAPIView):
+    serializer_class = UserRegistrationSerializer
+    permission_classes = [permissions.AllowAny]  # Allow anyone to register
 
+    def perform_create(self, serializer):
+        user = serializer.save()
+        user.is_active = False  # Deactivate account until email confirmation
+        user.save()
+
+        # Generate verification token
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+        # Construct verification link
+        verification_link = f"{settings.FRONTEND_URL}/verify-email/{uid}/{token}/"
+
+        # Send verification email
+        send_mail(
+            subject='Verify your email address',
+            message=f'Click here to verify: {verification_link}',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=f'<a href="{verification_link}">Verify Email</a>'
+        )
 class CropRecommendationViewSet(viewsets.ModelViewSet):
     queryset = CropRecommendation.objects.all()
 
