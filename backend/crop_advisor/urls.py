@@ -17,6 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
+from crops.views import verify_email
+
 
 def api_health(request):
     return JsonResponse({"status": "ok", "message": " Crop Advisor API is running"})
@@ -25,4 +27,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/health/', api_health, name='api_health'),
     path('api/crops/', include('crops.urls')),
+    path('verify-email/<str:uidb64>/<str:token>/', verify_email, name='verify_email'),
 ]

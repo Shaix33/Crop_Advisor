@@ -1,15 +1,13 @@
-from rest_framework import viewsets, status
-from rest_framework import generics, permissions
+from rest_framework import viewsets, status, generics, permissions, serializers
 from django.core.mail import send_mail
 from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.conf import settings
 from django.urls import reverse
 from django.contrib.auth.models import User
-from serializers import UserRegistrationSerializer
 from rest_framework.response import Response
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from django.shortcuts import get_object_or_404
 from .models import Crop, Location, CropRecommendation
 from .serializers import (
@@ -17,7 +15,8 @@ from .serializers import (
     LocationSerializer,
     LocationWriteSerializer,
     CropRecommendationReadSerializer,
-    CropRecommendationWriteSerializer
+    CropRecommendationWriteSerializer,
+    UserRegistrationSerializer,
 )
 
 
@@ -62,6 +61,22 @@ class userRegistrationView(generics.CreateAPIView):
             recipient_list=[user.email],
             html_message=f'<a href="{verification_link}">Verify Email</a>'
         )
+
+@api_view(['GET'])
+def verify_email(request, uidb64, token):
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+
+        if default_token_generator.check_token(user, token):
+            user.is_active = True
+            user.save()
+            return Response({"message": "Email verified successfully."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        return Response({"error": "Invalid request."}, status=status.HTTP_400_BAD_REQUEST)        
+
 class CropRecommendationViewSet(viewsets.ModelViewSet):
     queryset = CropRecommendation.objects.all()
 
@@ -69,6 +84,13 @@ class CropRecommendationViewSet(viewsets.ModelViewSet):
         if self.action in ["create", "update", "partial_update"]:
             return CropRecommendationWriteSerializer
         return CropRecommendationReadSerializer
+    
+class CropRecommendationWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CropRecommendation
+        fields = ['crop', 'location', 'suitability_score', 'reason']
+
+
 
     @action(detail=False, methods=["post"])
     def recommend(self, request):
